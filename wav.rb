@@ -74,6 +74,11 @@ def le2bytes(int)
   return [int].pack('v')
 end
 
+def make_silence(time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  return num_samples.times.map { |s| 0 }
+end
+
 def make_sine(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
@@ -81,21 +86,48 @@ def make_sine(frequency, time, rate)
   }
 end
 
-def make_sine_stereo(frequency, time, rate)
-  smp = make_sine(frequency, time, rate)
-  return smp.map { |s|
+def make_square(frequency, time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  return num_samples.times.map { |s|
+    height = Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))
+    height >= 0 ? MAX_V : MIN_V
+  }
+end
+
+def make_saw(frequency, time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  samples_per_cycle = (rate.to_f / frequency.to_f).round
+  sample_counter = 0
+
+  return num_samples.times.map { |s|
+    pct_thru_cycle = sample_counter.to_f / samples_per_cycle.to_f
+    sample_counter = (sample_counter + 1) % samples_per_cycle
+    (MAX_V * 2 * pct_thru_cycle) - MAX_V
+  }
+end
+
+def make_stereo(samples)
+  return samples.map { |s|
     [s, s]
   }
 end
 
+def make_sine_stereo(frequency, time, rate)
+  return make_stereo(make_sine(frequency, time, rate))
+end
+
+def make_melody(note_time_array, pitch_shift=1, tempo_shift=1)
+  samples = note_time_array.map do |nt|
+    note = nt.first
+    time = nt.last
+    note == nil ?
+      make_stereo(make_silence(time * tempo_shift, 44100)) :
+      make_sine_stereo(note * pitch_shift, time * tempo_shift, 44100)
+  end.reduce([]) { |all, samples| all + samples }
+  render_stereo_16(samples)
+end
+
 ########### SOUNDS
-
-ONE_SEC_RANDOM = 44100.times.map { |t|
-  [rand(MIN_V..MAX_V), rand(MIN_V..MAX_V)]
-}
-
-ONE_SEC_A = make_sine_stereo(440, 1, 44100)
-
 
 C4 = 261.63
 CS4 = 277.18
@@ -112,6 +144,51 @@ B4 = 493.88
 C5 = 523.25
 CS5 = 554.37
 D5 = 587.33
+DS5 = 622.254
+E5 = 659.26
+
+
+
+DU_HAST = [
+  [E5, 0.15],
+  [D5, 0.15],
+  [A4 , 0.15],
+  [nil, 0.15],
+  [C5, 0.15],
+  [nil, 0.15],
+  [B4, 0.15],
+  [nil, 0.15],
+  [E4, 0.15],
+  [nil, 0.15],
+
+  [A4, 0.15],
+  [C5, 0.15],
+  [D5, 0.15],
+  [nil, 0.15],
+  [B4, 0.15],
+
+  [nil, 0.3],
+
+  [E5, 0.15],
+  [D5, 0.15],
+  [A4, 0.15],
+  [C5, 0.15],
+  [B4, 0.15],
+
+  [E4, 0.15],
+  [A4, 0.15],
+  [C5, 0.15],
+  [D5, 0.15],
+  [B4, 0.15],
+]
+
+=begin
+
+ONE_SEC_RANDOM = 44100.times.map { |t|
+  [rand(MIN_V..MAX_V), rand(MIN_V..MAX_V)]
+}
+
+ONE_SEC_A = make_sine_stereo(A4, 1, 44100)
 
 
 HBD1 = make_sine_stereo(D4, 0.3, 44100)
@@ -174,5 +251,17 @@ HBD = [
   HBD25,
 ].reduce([]) { |all, samples| all + samples }
 
-render_stereo_16(HBD)
+#render_stereo_16(HBD)
 
+
+
+A_GAP = [
+  make_sine_stereo(A4, 1, 44100),
+  make_stereo(make_silence(1, 44100))
+].reduce([]) { |all, samples| all + samples }
+
+render_stereo_16(A_GAP)
+
+=end
+
+make_melody(DU_HAST, 2, 0.8)
