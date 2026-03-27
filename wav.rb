@@ -2,7 +2,7 @@
 # https://ccrma.stanford.edu/courses/422-winter-2014/projects/WaveFormat
 
 # TODO
-# define sweeps (pass a range into the oscillator's sine fn and interpolate as the sample moves forward)
+# debug: sweeps bounce when range is large
 
 MIN_V = -32768
 MAX_V = 32767
@@ -127,6 +127,16 @@ def make_sine(frequency, time, rate)
   }
 end
 
+# for some reason if the range is too big it bounces back the other direction
+def make_sine_sweep(from_frequency, to_frequency, time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  return num_samples.times.map { |s|
+    progress = s.to_f / num_samples.to_f
+    frequency = shape_lerp(from_frequency, to_frequency, progress)
+    (MAX_V.to_f * Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))).round
+  }
+end
+
 def make_square(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
@@ -148,6 +158,17 @@ def make_saw(frequency, time, rate)
 end
 
 ########### PROCESSING
+
+def shape_lerp(from, to, pct)
+  return ((to - from) * pct) + from
+end
+
+#def shape_logistic(from, to, pct)
+#  x_bounds = [-4.0, 4.0]
+#  x = ((x_bounds.last - x_bounds.first) * pct) + x_bounds.first
+#  height = 1.0 / (1.0 + Math.exp(-1.0 * x))
+#  return ((to - from) * height) + from
+#end
 
 def make_stereo(samples)
   return samples.map { |s| [s, s] }
@@ -173,24 +194,55 @@ end
 
 ########### OUTPUT
 
-def make_melody_daw(tempo, note_array, pitch_shift=1, tempo_shift=1)
-  # notes are e.g. [E5, 4] - an e5 quarter note
+# notes are [note, ..., note_value, (opt_voice)]
+# [E5, 4]                   an e5 quarter note
+# [FS2, CS3, FS3, 2]        an f# power chord half note
+# [FS2, CS3, FS3, 2, :saw]  the same chord rendered in saw
+def make_melody_daw(tempo, note_array, voice=:sine, pitch_shift=1, tempo_shift=1)
   quarter_note_time = 60.0 / tempo.to_f
-  note_time_array = note_array.map do |nv|
-    quarter_note_ratio = 4.0 / nv.last.to_f
-    [nv.first, quarter_note_time * quarter_note_ratio]
+  note_time_array = note_array.map do |note_params|
+
+    # figure out if there is a voice specified, remove all params except notes
+    value_or_voice = note_params.pop
+    value_voice = value_or_voice.is_a?(Numeric) ? [value_or_voice] : [note_params.pop, value_or_voice]
+
+    # determine the raw time of the note value
+    value = value_voice.first.to_f
+    quarter_note_ratio = 4.0 / value
+    raw_time = quarter_note_time * quarter_note_ratio
+
+    value_voice.count > 1 ? [*note_params, raw_time, value_voice.last] : [*note_params, raw_time]
   end
 
-  return make_melody(note_time_array, pitch_shift, tempo_shift)
+  return make_melody(note_time_array, voice, pitch_shift, tempo_shift)
 end
 
-def make_melody(note_time_array, pitch_shift=1, tempo_shift=1)
-  samples = note_time_array.map do |nt|
-    note = nt.first
-    time = nt.last
-    note == nil ?
-      make_silence(time * tempo_shift, 44100) :
-      make_sine(note * pitch_shift, time * tempo_shift, 44100)
+def make_melody(note_time_array, voice, pitch_shift=1, tempo_shift=1)
+  samples = note_time_array.map do |note_params|
+
+    # figure out if there is a voice specified, remove all params except notes
+    value_or_voice = note_params.pop
+    value_voice = value_or_voice.is_a?(Numeric) ? [value_or_voice] : [note_params.pop, value_or_voice]
+
+    time = value_voice.first
+    notes = note_params
+
+    if value_voice.count > 1
+      voice = value_voice.last
+    end
+
+    # Rest
+    if notes.first == nil
+      make_silence(time * tempo_shift, 44100)
+
+    # Chord
+    elsif notes.count > 1
+      sum(notes.map{ |note| send("make_#{voice}", note * pitch_shift, time * tempo_shift, 44100) })
+
+    # Note
+    else
+      send("make_#{voice}", notes.first * pitch_shift, time * tempo_shift, 44100)
+    end
   end.reduce([]) { |all, samples| all + samples }
   render_stereo_16(make_stereo(samples))
   return samples
@@ -204,149 +256,239 @@ end
 
 ##### TEST STUFF!
 
-=begin
-DU_HAST = [
-  [E5, 0.15],
-  [D5, 0.15],
-  [A4 , 0.15],
-  [nil, 0.15],
-  [C5, 0.15],
-  [nil, 0.15],
-  [B4, 0.15],
-  [nil, 0.15],
-  [E4, 0.15],
-  [nil, 0.15],
+ALL_STAR_GTR = [
+  # hey now, you a A
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
 
-  [A4, 0.15],
-  [C5, 0.15],
-  [D5, 0.15],
-  [nil, 0.15],
-  [B4, 0.15],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
 
-  [nil, 0.3],
+  [C3, FS3, C4, 8],
+  [C3, FS3, C4, 8],
+  [C3, FS3, C4, 8],
+  [C3, FS3, C4, 8],
 
-  [E5, 0.15],
-  [D5, 0.15],
-  [A4, 0.15],
-  [C5, 0.15],
-  [B4, 0.15],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
 
-  [E4, 0.15],
-  [A4, 0.15],
-  [C5, 0.15],
-  [D5, 0.15],
-  [B4, 0.15],
+  # hey now, you a B
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+
+  [C3, FS3, C4, 8],
+  [C3, FS3, C4, 8],
+  [C3, FS3, C4, 8],
+  [C3, FS3, C4, 8],
+
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+
+  # cause all that glitters
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+
+  [C3, FS3, C4, 8],
+  [C3, FS3, C4, 8],
+  [C3, FS3, C4, 8],
+  [C3, FS3, C4, 8],
+
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+  [B2, FS3, B3, 8],
+
+  # ...stars break the mold
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+  [FS2, CS3, FS3, 8],
+
+  [E2, B2, E3, 8],
+  [E2, B2, E3, 8],
+  [E2, B2, E3, 8],
+  [E2, B2, E3, 8],
+
+  [B2, FS3, B3, 1],
 ]
-make_melody(DU_HAST, 2, 0.8)
-=end
 
+ALL_STAR_BAS = [
+  # hey now, you a A
+  [FS1, 8],
+  [FS1, 8],
+  [FS1, 8],
+  [FS1, 8],
 
-OLD_MCD = [
-  [F4, 4],
-  [F4, 4],
-  [F4, 4],
-  [C4, 4],
-  [D4, 4],
-  [D4, 4],
-  [C4, 4],
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+
+  [C2, 8],
+  [C2, 8],
+  [C2, 8],
+  [C2, 8],
+
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+
+  # hey now, you a B
+  [FS1, 8],
+  [FS1, 8],
+  [FS1, 8],
+  [FS1, 8],
+
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+
+  [C2, 8],
+  [C2, 8],
+  [C2, 8],
+  [C2, 8],
+
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+
+  # cause all that glitters
+  [FS1, 8],
+  [FS1, 8],
+  [FS1, 8],
+  [FS1, 8],
+
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+
+  [C2, 8],
+  [C2, 8],
+  [C2, 8],
+  [C2, 8],
+
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+  [B1, 8],
+
+  # ...stars break the mold
+  [FS2, 8],
+  [FS2, 8],
+  [FS2, 8],
+  [FS2, 8],
+
+  [E2, 8],
+  [E2, 8],
+  [E2, 8],
+  [E2, 8],
+
+  [B2, 1],
+]
+
+ALL_STAR_VOC = [
+  # hey now, you a A
+  [AS4, 8],
+  [FS4, 8],
+  [nil, 8],
+  [FS4, 16],
+  [CS4, 16],
+  [FS4, 8],
+  [FS4, 8],
+  [nil, 8],
+  [FS4, 16],
+  [CS4, 16],
+  [FS4, 8],
+  [FS4, 8],
+  [nil, 8],
+  [FS4, 8],
+  [nil, 8],
+  [AS4, 4],
+  [nil, 8],
+
+  # hey now, you a B
+  [AS4, 8],
+  [FS4, 8],
+  [nil, 8],
+  [FS4, 16],
+  [CS4, 16],
+  [FS4, 8],
+  [FS4, 8],
+  [nil, 8],
+  [FS4, 16],
+  [CS4, 16],
+  [FS4, 8],
+  [FS4, 8],
+  [nil, 8],
+  [FS4, 8],
+  [nil, 8],
+  [AS4, 4],
+
+  # cause all that glitters
+  [FS4, 8], # pick up
+  [AS4, 4],
+  [CS5, 4],
+
+  [B4, 8],
+  [AS4, 8],
+  [GS4, 8],
+  [GS4, 8],
+  [FS4, 4],
   [nil, 4],
-  [A4, 4],
-  [A4, 4],
-  [G4, 4],
-  [G4, 4],
-  [F4, 1],
+  [FS4, 8],
+  [FS4, 8],
+  [GS4, 8],
+  [FS4, 8],
+
+  # ...stars break the mold
+  [AS4, 8],
+  [GS4, 4],
+  [GS4, 4],
+  [FS4, 4],
+  [GS4, 8],
+  [AS4, 8],
+  [DS4, 2],
 ]
 
-AWHHOH_MEL = [
-  [C5, 2],
-  [D5, 8],
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [AS4, 2],
+#line1 = make_melody_daw(104, ALL_STAR_GTR, :saw)
+#line2 = make_melody_daw(104, ALL_STAR_BAS)
+#line3 = make_melody_daw(104, ALL_STAR_VOC)
+#render_stereo_16(make_stereo(sum([line1, line2, line3])))
 
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [A4, 2],
+#sweep = make_sine_sweep(G4, F4, 8, 44100)
+#render_stereo_16(make_stereo(sweep))
 
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [F4, 8],
-
-  # simulate dotted quarter
-  [G4, 4],
-  [G4, 8],
-  [C4, 8],
-  [C4, 2],
-
-  [F4, 4],
-  [G4, 4],
-  [A4, 4],
-  [AS4, 4],
-  [A4, 2],
-  [G4, 2],
-  [F4, 1],
+VOICE_SELECT_TEST = [
+  [AS4, D5, G3, 1, :square],
+  [C4, 1, :saw],
+  [AS4, D5, G3, 1, :sine],
+  [D4, A4, 1],
 ]
 
-AWHHOH_HAR = [
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-
-  [F4, 8],
-  [G4, 8],
-  [A4, 8],
-  [F4, 8],
-#############
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [F4, 8],
-
-  [E4, 8],
-  [F4, 8],
-  [G4, 8],
-  [E4, 8],
-#############
-  [A4, 8],
-  [G4, 8],
-  [F4, 8],
-  [E4, 8],
-
-  [D4, 8],
-  [E4, 8],
-  [F4, 8],
-  [D4, 8],
-
-#############
-  [G4, 4],
-  [G4, 8],
-  [C4, 8],
-  [C4, 4],
-#############
-  [C5, 4],
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [F4, 4],
-  [AS4, 4],
-
-  [A4, 8],
-  [AS4, 8],
-  [C5, 8],
-  [A4, 8],
-  [G4, 4],
-  [G4, 8],
-  [F4, 8],
-  [F4, 1],
-]
-
-line1 = make_melody_daw(120, AWHHOH_MEL)
-line2 = make_melody_daw(120, AWHHOH_HAR)
-
-render_stereo_16(make_stereo(sum([line1, line2])))
+render_stereo_16(make_stereo(make_melody_daw(104, VOICE_SELECT_TEST)))
