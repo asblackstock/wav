@@ -147,6 +147,7 @@ def make_saw(frequency, time, rate)
   }
 end
 
+
 ########### PROCESSING
 
 def make_stereo(samples)
@@ -178,7 +179,7 @@ def make_melody_daw(tempo, note_array, pitch_shift=1, tempo_shift=1)
   quarter_note_time = 60.0 / tempo.to_f
   note_time_array = note_array.map do |nv|
     quarter_note_ratio = 4.0 / nv.last.to_f
-    [nv.first, quarter_note_time * quarter_note_ratio]
+    [nv.first, nv[1], quarter_note_time * quarter_note_ratio]
   end
 
   return make_melody(note_time_array, pitch_shift, tempo_shift)
@@ -187,10 +188,11 @@ end
 def make_melody(note_time_array, pitch_shift=1, tempo_shift=1)
   samples = note_time_array.map do |nt|
     note = nt.first
+    waveform = nt[1]
     time = nt.last
     note == nil ?
       make_silence(time * tempo_shift, 44100) :
-      make_sine(note * pitch_shift, time * tempo_shift, 44100)
+      send("make_#{waveform}",note * pitch_shift, time * tempo_shift, 44100)
   end.reduce([]) { |all, samples| all + samples }
   render_stereo_16(make_stereo(samples))
   return samples
@@ -242,108 +244,108 @@ make_melody(DU_HAST, 2, 0.8)
 
 
 OLD_MCD = [
-  [F4, 4],
-  [F4, 4],
-  [F4, 4],
-  [C4, 4],
-  [D4, 4],
-  [D4, 4],
-  [C4, 4],
-  [nil, 4],
-  [A4, 4],
-  [A4, 4],
-  [G4, 4],
-  [G4, 4],
-  [F4, 1],
+  [F4, "sine", 4],
+  [F4, "sine", 4],
+  [F4, "sine", 4],
+  [C4, "sine", 4],
+  [D4, "sine", 4],
+  [D4, "sine", 4],
+  [C4, "sine", 4],
+  [nil, nil, 4],
+  [A4, "sine", 4],
+  [A4, "sine", 4],
+  [G4, "sine", 4],
+  [G4, "sine", 4],
+  [F4, "sine", 1],
 ]
 
 AWHHOH_MEL = [
-  [C5, 2],
-  [D5, 8],
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [AS4, 2],
+  [C5, "sine", 2],
+  [D5, "sine", 8],
+  [C5, "sine", 8],
+  [AS4, "sine", 8],
+  [A4, "sine", 8],
+  [AS4, "sine", 2],
 
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [A4, 2],
+  [C5, "sine", 8],
+  [AS4, "sine", 8],
+  [A4, "sine", 8],
+  [G4, "sine", 8],
+  [A4, "sine", 2],
 
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [F4, 8],
+  [AS4, "sine", 8],
+  [A4, "sine", 8],
+  [G4, "sine", 8],
+  [F4, "sine", 8],
 
   # simulate dotted quarter
-  [G4, 4],
-  [G4, 8],
-  [C4, 8],
-  [C4, 2],
+  [G4, "sine", 4],
+  [G4, "sine", 8],
+  [C4, "sine", 8],
+  [C4, "sine", 2],
 
-  [F4, 4],
-  [G4, 4],
-  [A4, 4],
-  [AS4, 4],
-  [A4, 2],
-  [G4, 2],
-  [F4, 1],
+  [F4, "sine", 4],
+  [G4, "sine", 4],
+  [A4, "sine", 4],
+  [AS4, "sine", 4],
+  [A4, "sine", 2],
+  [G4, "sine", 2],
+  [F4, "sine", 1],
 ]
 
 AWHHOH_HAR = [
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
+  [C5, "sine", 8],
+  [AS4, "sine", 8],
+  [A4, "sine", 8],
+  [G4, "sine", 8],
 
-  [F4, 8],
-  [G4, 8],
-  [A4, 8],
-  [F4, 8],
+  [F4, "sine", 8],
+  [G4, "sine", 8],
+  [A4, "sine", 8],
+  [F4, "sine", 8],
 #############
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [F4, 8],
+  [AS4, "sine", 8],
+  [A4, "sine", 8],
+  [G4, "sine", 8],
+  [F4, "sine", 8],
 
-  [E4, 8],
-  [F4, 8],
-  [G4, 8],
-  [E4, 8],
+  [E4, "sine", 8],
+  [F4, "sine", 8],
+  [G4, "sine", 8],
+  [E4, "sine", 8],
 #############
-  [A4, 8],
-  [G4, 8],
-  [F4, 8],
-  [E4, 8],
+  [A4, "sine", 8],
+  [G4, "sine", 8],
+  [F4, "sine", 8],
+  [E4, "sine", 8],
 
-  [D4, 8],
-  [E4, 8],
-  [F4, 8],
-  [D4, 8],
+  [D4, "sine", 8],
+  [E4, "sine", 8],
+  [F4, "sine", 8],
+  [D4, "sine", 8],
 
 #############
-  [G4, 4],
-  [G4, 8],
-  [C4, 8],
-  [C4, 4],
+  [G4, "sine", 4],
+  [G4, "sine", 8],
+  [C4, "sine", 8],
+  [C4, "sine", 4],
 #############
-  [C5, 4],
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [F4, 4],
-  [AS4, 4],
+  [C5, "sine", 4],
+  [C5, "sine", 8],
+  [AS4, "sine", 8],
+  [A4, "sine", 8],
+  [G4, "sine", 8],
+  [F4, "sine", 4],
+  [AS4, "sine", 4],
 
-  [A4, 8],
-  [AS4, 8],
-  [C5, 8],
-  [A4, 8],
-  [G4, 4],
-  [G4, 8],
-  [F4, 8],
-  [F4, 1],
+  [A4, "sine", 8],
+  [AS4, "sine", 8],
+  [C5, "sine", 8],
+  [A4, "sine", 8],
+  [G4, "sine", 4],
+  [G4, "sine", 8],
+  [F4, "sine", 8],
+  [F4, "sine", 1],
 ]
 
 line1 = make_melody_daw(120, AWHHOH_MEL)
