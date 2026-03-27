@@ -1,12 +1,46 @@
 # Raw wav renderer
 # https://ccrma.stanford.edu/courses/422-winter-2014/projects/WaveFormat
 
+# TODO
+# define sweeps (pass a range into the oscillator's sine fn and interpolate as the sample moves forward)
+
 MIN_V = -32768
 MAX_V = 32767
 
-def render_stereo_16(samples)
-  render(2, 44100, 16, samples)
+########### SOUNDS
+
+C4 = 261.63
+CS4 = 277.18
+D4 = 293.66
+DS4 = 311.13
+E4 = 329.63
+F4 = 349.23
+FS4 = 369.99
+G4 = 392.00
+GS4 = 415.30
+A4 = 440.00
+AS4 = 466.16
+B4 = 493.88
+
+BASE_OCTAVE = [C4,CS4,D4,DS4,E4,F4,FS4,G4,GS4,A4,AS4,B4]
+BASE_OCTAVE_SYM = [:C4,:CS4,:D4,:DS4,:E4,:F4,:FS4,:G4,:GS4,:A4,:AS4,:B4]
+
+# todo: use const_set('CONST', value) in a class
+def define_ns(n, mult)
+  BASE_OCTAVE.each_with_index { |c, ix|
+    eval("#{BASE_OCTAVE_SYM[ix].to_s.gsub(/\d/, n.to_s)} = #{c * mult.to_f}")
+  }
 end
+
+# Define frequencies for octaves 0 - 8 (don't kill me, theory dudes)
+define_ns(0, 1.0/16.0)
+define_ns(1, 1.0/8.0)
+define_ns(2, 1.0/4.0)
+define_ns(3, 1.0/2.0)
+define_ns(5, 2.0)
+define_ns(6, 4.0)
+define_ns(7, 8.0)
+define_ns(8, 16.0)
 
 def render(channels, sample_rate, bits_per_sample, samples=[])
   chunk_id = hexbytes([0x52, 0x49, 0x46, 0x46]) # "RIFF"
@@ -74,9 +108,16 @@ def le2bytes(int)
   return [int].pack('v')
 end
 
+########### OSCILLATORS
+
 def make_silence(time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s| 0 }
+end
+
+def make_noise(time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  return num_samples.times.map { |s| rand(MIN_V..MAX_V) }
 end
 
 def make_sine(frequency, time, rate)
@@ -102,18 +143,45 @@ def make_saw(frequency, time, rate)
   return num_samples.times.map { |s|
     pct_thru_cycle = sample_counter.to_f / samples_per_cycle.to_f
     sample_counter = (sample_counter + 1) % samples_per_cycle
-    (MAX_V * 2 * pct_thru_cycle) - MAX_V
+    ((MAX_V.to_f * 2.0 * pct_thru_cycle) - MAX_V.to_f).round
   }
 end
+
+########### PROCESSING
 
 def make_stereo(samples)
-  return samples.map { |s|
-    [s, s]
-  }
+  return samples.map { |s| [s, s] }
 end
 
-def make_sine_stereo(frequency, time, rate)
-  return make_stereo(make_sine(frequency, time, rate))
+def sum(sample_arrays)
+  output_length = sample_arrays.map(&:count).max
+  output_samples = []
+
+  (0...output_length).each do |i|
+    sample_count = 0
+    sample_sum = 0
+    sample_arrays.each do |arr|
+      if i < arr.count
+        sample_count += 1
+        sample_sum += arr[i]
+      end
+    end
+    output_samples << (sample_sum.to_f / sample_count.to_f).round
+  end
+  return output_samples
+end
+
+########### OUTPUT
+
+def make_melody_daw(tempo, note_array, pitch_shift=1, tempo_shift=1)
+  # notes are e.g. [E5, 4] - an e5 quarter note
+  quarter_note_time = 60.0 / tempo.to_f
+  note_time_array = note_array.map do |nv|
+    quarter_note_ratio = 4.0 / nv.last.to_f
+    [nv.first, quarter_note_time * quarter_note_ratio]
+  end
+
+  return make_melody(note_time_array, pitch_shift, tempo_shift)
 end
 
 def make_melody(note_time_array, pitch_shift=1, tempo_shift=1)
@@ -121,34 +189,22 @@ def make_melody(note_time_array, pitch_shift=1, tempo_shift=1)
     note = nt.first
     time = nt.last
     note == nil ?
-      make_stereo(make_silence(time * tempo_shift, 44100)) :
-      make_sine_stereo(note * pitch_shift, time * tempo_shift, 44100)
+      make_silence(time * tempo_shift, 44100) :
+      make_sine(note * pitch_shift, time * tempo_shift, 44100)
   end.reduce([]) { |all, samples| all + samples }
-  render_stereo_16(samples)
+  render_stereo_16(make_stereo(samples))
+  return samples
 end
 
-########### SOUNDS
-
-C4 = 261.63
-CS4 = 277.18
-D4 = 293.66
-DS4 = 311.13
-E4 = 329.63
-F4 = 349.23
-FS4 = 369.99
-G4 = 392.00
-GS4 = 415.30
-A4 = 440.00
-AS4 = 466.16
-B4 = 493.88
-C5 = 523.25
-CS5 = 554.37
-D5 = 587.33
-DS5 = 622.254
-E5 = 659.26
+def render_stereo_16(samples)
+  render(2, 44100, 16, samples)
+end
 
 
 
+##### TEST STUFF!
+
+=begin
 DU_HAST = [
   [E5, 0.15],
   [D5, 0.15],
@@ -181,87 +237,116 @@ DU_HAST = [
   [D5, 0.15],
   [B4, 0.15],
 ]
-
-=begin
-
-ONE_SEC_RANDOM = 44100.times.map { |t|
-  [rand(MIN_V..MAX_V), rand(MIN_V..MAX_V)]
-}
-
-ONE_SEC_A = make_sine_stereo(A4, 1, 44100)
-
-
-HBD1 = make_sine_stereo(D4, 0.3, 44100)
-HBD2 = make_sine_stereo(D4, 0.25, 44100)
-HBD3 = make_sine_stereo(E4, 0.5, 44100)
-HBD4 = make_sine_stereo(D4, 0.5, 44100)
-HBD5 = make_sine_stereo(G4, 0.5, 44100)
-HBD6 = make_sine_stereo(FS4, 1, 44100)
-
-HBD7 = make_sine_stereo(D4, 0.3, 44100)
-HBD8 = make_sine_stereo(D4, 0.25, 44100)
-HBD9 = make_sine_stereo(E4, 0.5, 44100)
-HBD10 = make_sine_stereo(D4, 0.5, 44100)
-HBD11 = make_sine_stereo(A4, 0.5, 44100)
-HBD12 = make_sine_stereo(G4, 1, 44100)
-
-HBD13 = make_sine_stereo(D4, 0.3, 44100)
-HBD14 = make_sine_stereo(D4, 0.25, 44100)
-HBD15 = make_sine_stereo(D5, 0.5, 44100)
-HBD16 = make_sine_stereo(B4, 0.5, 44100)
-HBD17 = make_sine_stereo(G4, 0.5, 44100)
-HBD18 = make_sine_stereo(FS4, 0.5, 44100)
-HBD19 = make_sine_stereo(E4, 1, 44100)
-
-HBD20 = make_sine_stereo(C5, 0.3, 44100)
-HBD21 = make_sine_stereo(C5, 0.25, 44100)
-HBD22 = make_sine_stereo(B4, 0.5, 44100)
-HBD23 = make_sine_stereo(G4, 0.5, 44100)
-HBD24 = make_sine_stereo(A4, 0.5, 44100)
-HBD25 = make_sine_stereo(G4, 1, 44100)
-
-HBD = [
-  HBD1,
-  HBD2,
-  HBD3,
-  HBD4,
-  HBD5,
-  HBD6,
-
-  HBD7,
-  HBD8,
-  HBD9,
-  HBD10,
-  HBD11,
-  HBD12,
-
-  HBD13,
-  HBD14,
-  HBD15,
-  HBD16,
-  HBD17,
-  HBD18,
-  HBD19,
-
-  HBD20,
-  HBD21,
-  HBD22,
-  HBD23,
-  HBD24,
-  HBD25,
-].reduce([]) { |all, samples| all + samples }
-
-#render_stereo_16(HBD)
-
-
-
-A_GAP = [
-  make_sine_stereo(A4, 1, 44100),
-  make_stereo(make_silence(1, 44100))
-].reduce([]) { |all, samples| all + samples }
-
-render_stereo_16(A_GAP)
-
+make_melody(DU_HAST, 2, 0.8)
 =end
 
-make_melody(DU_HAST, 2, 0.8)
+
+OLD_MCD = [
+  [F4, 4],
+  [F4, 4],
+  [F4, 4],
+  [C4, 4],
+  [D4, 4],
+  [D4, 4],
+  [C4, 4],
+  [nil, 4],
+  [A4, 4],
+  [A4, 4],
+  [G4, 4],
+  [G4, 4],
+  [F4, 1],
+]
+
+AWHHOH_MEL = [
+  [C5, 2],
+  [D5, 8],
+  [C5, 8],
+  [AS4, 8],
+  [A4, 8],
+  [AS4, 2],
+
+  [C5, 8],
+  [AS4, 8],
+  [A4, 8],
+  [G4, 8],
+  [A4, 2],
+
+  [AS4, 8],
+  [A4, 8],
+  [G4, 8],
+  [F4, 8],
+
+  # simulate dotted quarter
+  [G4, 4],
+  [G4, 8],
+  [C4, 8],
+  [C4, 2],
+
+  [F4, 4],
+  [G4, 4],
+  [A4, 4],
+  [AS4, 4],
+  [A4, 2],
+  [G4, 2],
+  [F4, 1],
+]
+
+AWHHOH_HAR = [
+  [C5, 8],
+  [AS4, 8],
+  [A4, 8],
+  [G4, 8],
+
+  [F4, 8],
+  [G4, 8],
+  [A4, 8],
+  [F4, 8],
+#############
+  [AS4, 8],
+  [A4, 8],
+  [G4, 8],
+  [F4, 8],
+
+  [E4, 8],
+  [F4, 8],
+  [G4, 8],
+  [E4, 8],
+#############
+  [A4, 8],
+  [G4, 8],
+  [F4, 8],
+  [E4, 8],
+
+  [D4, 8],
+  [E4, 8],
+  [F4, 8],
+  [D4, 8],
+
+#############
+  [G4, 4],
+  [G4, 8],
+  [C4, 8],
+  [C4, 4],
+#############
+  [C5, 4],
+  [C5, 8],
+  [AS4, 8],
+  [A4, 8],
+  [G4, 8],
+  [F4, 4],
+  [AS4, 4],
+
+  [A4, 8],
+  [AS4, 8],
+  [C5, 8],
+  [A4, 8],
+  [G4, 4],
+  [G4, 8],
+  [F4, 8],
+  [F4, 1],
+]
+
+line1 = make_melody_daw(120, AWHHOH_MEL)
+line2 = make_melody_daw(120, AWHHOH_HAR)
+
+render_stereo_16(make_stereo(sum([line1, line2])))
