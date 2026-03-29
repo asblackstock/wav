@@ -178,7 +178,7 @@ end
 def make_sine(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
-    (amp_saw_env(num_samples, s, 0.2) * Math.sin(frequency.to_f * (1.0 / rate.to_f) * (2.0 * Math::PI * s.to_f))).round
+    (amp_saw_env(num_samples, s, 0.25) * Math.sin(frequency.to_f * (1.0 / rate.to_f) * (2.0 * Math::PI * s.to_f))).round
   }
 end
 
@@ -220,21 +220,30 @@ def amp(v, percent)
   v * percent
 end
 
-# Let's make a simple fixed AR envelope as a saw whose peak is some percentage through the note
-def amp_saw_env(num_samples, sample, attack = 0.5)
+# Let's make a simple fixed ASR envelope
+# The A and R stages are defined as percentages of note length
+# The S stage is percentage of MAX_V
+#
+# TODO: the release stage should be calculated as something like total_length - attack_stage and walk the percentage back from the end of that?
+def amp_saw_env(num_samples, sample, attack = 0.5, sustain = 0.2, release = 0.75)
   return 0 if sample == 0
 
   # Percent through note total .eg. 0.38
   percent_of_time_through_note = sample.to_f / num_samples.to_f
 
+  release_point = 1 - release
+
   # On the way up the ramp, we linearly go from 0 to MAX_V
   # On the way down, we linearly go from MAX_V to 0
   if percent_of_time_through_note < attack
     # Attack
-    value = percent_of_time_through_note / attack
+    value = (percent_of_time_through_note / attack) * sustain
+  elsif percent_of_time_through_note < release
+    # Sustain
+    value = sustain
   else
     # Release
-    value = (1 - percent_of_time_through_note) / (1 - attack)
+    value = ((1 - percent_of_time_through_note) / (1 - release)) * sustain
   end
 
   amount = MAX_V.to_f * value
