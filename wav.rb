@@ -178,7 +178,7 @@ end
 def make_sine(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
-    (amp_saw_env(num_samples, s, 0.1) * Math.sin(frequency.to_f * (1.0 / rate.to_f) * (2.0 * Math::PI * s.to_f))).round
+    (amp_saw_env(num_samples, s, 0.2) * Math.sin(frequency.to_f * (1.0 / rate.to_f) * (2.0 * Math::PI * s.to_f))).round
   }
 end
 
@@ -230,14 +230,14 @@ def amp_saw_env(num_samples, sample, attack = 0.5)
   # On the way up the ramp, we linearly go from 0 to MAX_V
   # On the way down, we linearly go from MAX_V to 0
   if percent_of_time_through_note < attack
-    #Attack
-    amount = shape_lerp(0, MAX_V.to_f, 2.0 * percent_of_time_through_note)
+    # Attack
+    value = percent_of_time_through_note / attack
   else
     # Release
-    amount = shape_lerp(MAX_V.to_f, 0, 2.0 * (1 - percent_of_time_through_note))
+    value = (1 - percent_of_time_through_note) / (1 - attack)
   end
 
-  amount.to_i
+  amount = MAX_V.to_f * value
 end
 
 ########### PROCESSING
@@ -381,6 +381,12 @@ TRIPPLET_TEST_BASS = [
   [G2, 4],
 ]
 
-line1 = make_melody_daw(100, TRIPPLET_TEST)
-line2 = make_melody_daw(100, TRIPPLET_TEST_BASS)
-render_stereo_16(make_stereo(sum([line1, line2])))
+TEST = [
+  [C4, 1],
+  [C4, 2],
+  [C4, 4],
+]
+
+line1 = make_melody_daw(120, TEST)
+# line2 = make_melody_daw(100, TRIPPLET_TEST_BASS)
+render_stereo_16(make_stereo(line1))
