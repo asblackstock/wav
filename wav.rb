@@ -6,10 +6,7 @@
   # reset the phase for samples that will be summed together
   # continue the phase for samples that will be placed in sequence
 
-# introduce sliding notation e.g. [FS1-B1, 2], and implement with sweeps
-# debug: sweeps bounce when range is large
-
-# ratatat tacobel canon
+# debug: sweeps
 
 # FFT a note from a violin, figure out a wave comp, make a violin synth voice
 
@@ -183,6 +180,7 @@ def make_sine(frequency, time, rate)
 end
 
 # for some reason if the range is too big it bounces back the other direction
+# look into Spectral Leakage/Windowing Effects (Time-Domain Artifacts)
 def make_sine_sweep(from_frequency, to_frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
@@ -200,6 +198,16 @@ def make_square(frequency, time, rate)
   }
 end
 
+def make_square_sweep(from_frequency, to_frequency, time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  return num_samples.times.map { |s|
+    progress = s.to_f / num_samples.to_f
+    frequency = shape_lerp(from_frequency, to_frequency, progress)
+    height = Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))
+    height >= 0 ? MAX_V : MIN_V
+  }
+end
+
 def make_saw(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   samples_per_cycle = (rate.to_f / frequency.to_f).round
@@ -207,6 +215,20 @@ def make_saw(frequency, time, rate)
 
   return num_samples.times.map { |s|
     pct_thru_cycle = sample_counter.to_f / samples_per_cycle.to_f
+    sample_counter = (sample_counter + 1) % samples_per_cycle
+    ((MAX_V.to_f * 2.0 * pct_thru_cycle) - MAX_V.to_f).round
+  }
+end
+
+def make_saw_sweep(from_frequency, to_frequency, time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  samples_per_cycle = (rate.to_f / from_frequency.to_f).round
+  sample_counter = 0
+
+  return num_samples.times.map { |s|
+    pct_thru_cycle = sample_counter.to_f / samples_per_cycle.to_f
+    progress = s.to_f / num_samples.to_f
+    samples_per_cycle = (rate.to_f / shape_lerp(from_frequency, to_frequency, progress)).round
     sample_counter = (sample_counter + 1) % samples_per_cycle
     ((MAX_V.to_f * 2.0 * pct_thru_cycle) - MAX_V.to_f).round
   }
@@ -253,6 +275,7 @@ end
 # [E5, 4]                   an e5 quarter note
 # [FS2, CS3, FS3, 2]        an f# power chord half note
 # [FS2, CS3, FS3, 2, :saw]  the same chord rendered in saw
+# [[C4,G4], 4]              can be a slide between two notes
 def make_melody_daw(tempo, note_array, voice=:sine, pitch_shift=1, tempo_shift=1)
   quarter_note_time = 60.0 / tempo.to_f
   note_time_array = note_array.map do |note_params|
@@ -292,11 +315,28 @@ def make_melody(note_time_array, voice, pitch_shift=1, tempo_shift=1)
 
     # Chord
     elsif notes.count > 1
-      sum(notes.map{ |note| send("make_#{voice}", note * pitch_shift, time * tempo_shift, 44100) })
+      sum(notes.map { |note|
+      # Slide
+      if note.is_a?(Array)
+        send("make_#{voice}_sweep", note.first * pitch_shift, note.last * pitch_shift, time * tempo_shift, 44100)
+
+      # Solid
+      else
+        send("make_#{voice}", note * pitch_shift, time * tempo_shift, 44100)
+      end
+      })
 
     # Note
     else
-      send("make_#{voice}", notes.first * pitch_shift, time * tempo_shift, 44100)
+      note = notes.first
+      # Slide
+      if note.is_a?(Array)
+        send("make_#{voice}_sweep", note.first * pitch_shift, note.last * pitch_shift, time * tempo_shift, 44100)
+
+      # Solid
+      else
+        send("make_#{voice}", note * pitch_shift, time * tempo_shift, 44100)
+      end
     end
   end.reduce([]) { |all, samples| all + samples }
 end
@@ -307,52 +347,117 @@ end
 
 tp = 3 * 4
 
-TRIPPLET_TEST = [
-  [G3, tp],
-  [C4, tp],
-  [A4, tp],
+TACO_MEL = [
+  [G4, tp],
+  [D4, tp],
+  [G4, tp],
 
-  [G3, tp],
-  [C4, tp],
   [A4, tp],
+  [D4, tp],
+  [B4, tp],
 
-  [G3, tp],
-  [C4, tp],
-  [A4, tp],
 
-  [G3, tp],
-  [C4, tp],
-  [A4, tp],
+  [D4, tp],
+  [D5, tp],
+  [E5, tp],
 
-  [G3, tp],
-  [C4, tp],
-  [A4, tp],
 
-  [G3, tp],
-  [C4, tp],
-  [A4, tp],
+  [D5, tp],
+  [C5, tp],
+  [B4, tp],
 
-  [G3, tp],
-  [C4, tp],
-  [A4, tp],
 
+  [D4, tp],
+  [A4, tp],
+  [D4, tp],
+
+
+  [B4, tp],
+  [A4, tp],
+  [D5, tp],
+
+
+  [B4, tp],
+  [C5, tp],
+  [B4, tp],
+
+  [G4, tp],
+  [D4, tp],
+  [C4, tp],
+
+  ###################
+
+  [C3, tp],
   [G3, tp],
   [C4, tp],
+
+  [FS4, tp],
+  [C4, tp],
+  [G4, tp],
+
+  [C3, tp],
+  [C4, tp],
+  [FS4, tp],
+
+  [G4, tp],
+  [C4, tp],
+  [C5, tp],
+
+  [A3, tp],
   [A4, tp],
+  [C4, tp],
+
+  [B4, tp],
+  [E4, tp],
+  [C5, tp],
+
+  [A3, tp],
+  [A4, tp],
+  [E4, tp],
+
+  [C5, tp],
+  [E4, tp],
+  [C5, tp],
 ]
 
-TRIPPLET_TEST_BASS = [
-  [G2, 4],
-  [C3, 4],
-  [A3, 4],
-  [G2, 4],
-
-  [G2, 4],
-  [C3, 4],
-  [A3, 4],
-  [G2, 4],
+TACO_HAR = [
+  [D3, G3, 2],
+  [FS3, D4, 2],
+  [D3, FS3, 2],
+  [G2, [B3, D4], [G3, B3], 2],
+  ###################
+  [E3, C4, E4, 2],
+  [C4, 2],
+  [A3, 2],
+  [E3, E4, 2],
 ]
 
-line1 = make_melody_daw(100, TRIPPLET_TEST)
-line2 = make_melody_daw(100, TRIPPLET_TEST_BASS)
-render_stereo_16(make_stereo(sum([line1, line2])))
+TACO_BAS = [
+  [G2, 2],
+  [FS2, 2],
+  [D3, 2],
+  [G2, 2],
+  ###################
+  [C3, 2],
+  [G2, G3, 2],
+  [A2, 2], # add A1
+  [A2, 2], # add A1
+]
+
+#render_stereo_16(make_stereo(make_melody_daw(90, TACO_MEL, :saw)))
+
+line1 = make_melody_daw(90, TACO_MEL, :saw)
+line2 = make_melody_daw(90, TACO_HAR, :saw)
+line3 = make_melody_daw(90, TACO_BAS)
+render_stereo_16(make_stereo(sum([line1, line2, line3])))
+
+
+SLIDE_TEST = [
+  #[AS4, D5, G3, 4],
+  #[C4, 4],
+  [[C4, C5], [D4, D5], 2],
+  #[C5, 4],
+  [[C5, C4], [D5, D4], 2],
+]
+
+#render_stereo_16(make_stereo(make_melody_daw(90, SLIDE_TEST, :saw)))
