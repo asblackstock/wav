@@ -2,7 +2,16 @@
 # https://ccrma.stanford.edu/courses/422-winter-2014/projects/WaveFormat
 
 # TODO
-# define sweeps (pass a range into the oscillator's sine fn and interpolate as the sample moves forward)
+# connect sample arrays smoothly by tracking phase angle
+  # reset the phase for samples that will be summed together
+  # continue the phase for samples that will be placed in sequence
+
+# introduce sliding notation e.g. [FS1-B1, 2], and implement with sweeps
+# debug: sweeps bounce when range is large
+
+# ratatat tacobel canon
+
+# FFT a note from a violin, figure out a wave comp, make a violin synth voice
 
 MIN_V = -32768
 MAX_V = 32767
@@ -41,6 +50,12 @@ define_ns(5, 2.0)
 define_ns(6, 4.0)
 define_ns(7, 8.0)
 define_ns(8, 16.0)
+
+########### OUTPUT
+
+def render_stereo_16(samples)
+  render(2, 44100, 16, samples)
+end
 
 def render(channels, sample_rate, bits_per_sample, samples=[])
   chunk_id = hexbytes([0x52, 0x49, 0x46, 0x46]) # "RIFF"
@@ -120,9 +135,59 @@ def make_noise(time, rate)
   return num_samples.times.map { |s| rand(MIN_V..MAX_V) }
 end
 
+# A __really solid__ ol' college try at implementing phase locking.
+=begin
+$global_phase_angle = 0
+
+def make_sine(frequency, time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  amplitude = MAX_V.to_f
+  period = frequency.to_f / rate.to_f * 2.0 * Math::PI
+
+  # frequency = cycles / second
+  # rate = samples per cycle
+  samples_per_cycle = rate.to_f / frequency.to_f
+  phase_tick = 2.0 * Math::PI / samples_per_cycle
+  offset = $global_phase_angle
+
+  puts "starting phase angle is #{offset}"
+
+  return num_samples.times.map { |s|
+
+    #offset = Math::PI
+    #offset = $global_phase_angle * samples_per_cycle
+    #offset = Math::PI * samples_per_cycle
+    #offset = 0
+
+    height = (amplitude * Math.sin(period * (s.to_f - (offset * frequency)))).round
+
+
+    #puts "#{s % samples_per_cycle.to_i} #{$global_phase_angle}"
+
+    $global_phase_angle += phase_tick
+    if $global_phase_angle > 2.0 * Math::PI
+      $global_phase_angle -= 2.0 * Math::PI
+    end
+
+    puts "last known phase angle is #{offset}"
+    height
+  }
+end
+=end
+
 def make_sine(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
+    (MAX_V.to_f * Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))).round
+  }
+end
+
+# for some reason if the range is too big it bounces back the other direction
+def make_sine_sweep(from_frequency, to_frequency, time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  return num_samples.times.map { |s|
+    progress = s.to_f / num_samples.to_f
+    frequency = shape_lerp(from_frequency, to_frequency, progress)
     (MAX_V.to_f * Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))).round
   }
 end
@@ -149,6 +214,17 @@ end
 
 ########### PROCESSING
 
+def shape_lerp(from, to, pct)
+  return ((to - from) * pct) + from
+end
+
+#def shape_logistic(from, to, pct)
+#  x_bounds = [-4.0, 4.0]
+#  x = ((x_bounds.last - x_bounds.first) * pct) + x_bounds.first
+#  height = 1.0 / (1.0 + Math.exp(-1.0 * x))
+#  return ((to - from) * height) + from
+#end
+
 def make_stereo(samples)
   return samples.map { |s| [s, s] }
 end
@@ -171,182 +247,112 @@ def sum(sample_arrays)
   return output_samples
 end
 
-########### OUTPUT
+########### COMPOSITION
 
-def make_melody_daw(tempo, note_array, pitch_shift=1, tempo_shift=1)
-  # notes are e.g. [E5, 4] - an e5 quarter note
+# notes are [note, ..., note_value, (opt_voice)]
+# [E5, 4]                   an e5 quarter note
+# [FS2, CS3, FS3, 2]        an f# power chord half note
+# [FS2, CS3, FS3, 2, :saw]  the same chord rendered in saw
+def make_melody_daw(tempo, note_array, voice=:sine, pitch_shift=1, tempo_shift=1)
   quarter_note_time = 60.0 / tempo.to_f
-  note_time_array = note_array.map do |nv|
-    quarter_note_ratio = 4.0 / nv.last.to_f
-    [nv.first, quarter_note_time * quarter_note_ratio]
+  note_time_array = note_array.map do |note_params|
+
+    # figure out if there is a voice specified, remove all params except notes
+    value_or_voice = note_params.pop
+    value_voice = value_or_voice.is_a?(Numeric) ? [value_or_voice] : [note_params.pop, value_or_voice]
+
+    # determine the raw time of the note value
+    value = value_voice.first.to_f
+    quarter_note_ratio = 4.0 / value
+    raw_time = quarter_note_time * quarter_note_ratio
+
+    value_voice.count > 1 ? [*note_params, raw_time, value_voice.last] : [*note_params, raw_time]
   end
 
-  return make_melody(note_time_array, pitch_shift, tempo_shift)
+  return make_melody(note_time_array, voice, pitch_shift, tempo_shift)
 end
 
-def make_melody(note_time_array, pitch_shift=1, tempo_shift=1)
-  samples = note_time_array.map do |nt|
-    note = nt.first
-    time = nt.last
-    note == nil ?
-      make_silence(time * tempo_shift, 44100) :
-      make_sine(note * pitch_shift, time * tempo_shift, 44100)
+def make_melody(note_time_array, voice, pitch_shift=1, tempo_shift=1)
+  note_time_array.map do |note_params|
+
+    # figure out if there is a voice specified, remove all params except notes
+    value_or_voice = note_params.pop
+    value_voice = value_or_voice.is_a?(Numeric) ? [value_or_voice] : [note_params.pop, value_or_voice]
+
+    time = value_voice.first
+    notes = note_params
+
+    if value_voice.count > 1
+      voice = value_voice.last
+    end
+
+    # Rest
+    if notes.first == nil
+      make_silence(time * tempo_shift, 44100)
+
+    # Chord
+    elsif notes.count > 1
+      sum(notes.map{ |note| send("make_#{voice}", note * pitch_shift, time * tempo_shift, 44100) })
+
+    # Note
+    else
+      send("make_#{voice}", notes.first * pitch_shift, time * tempo_shift, 44100)
+    end
   end.reduce([]) { |all, samples| all + samples }
-  render_stereo_16(make_stereo(samples))
-  return samples
-end
-
-def render_stereo_16(samples)
-  render(2, 44100, 16, samples)
 end
 
 
 
 ##### TEST STUFF!
 
-=begin
-DU_HAST = [
-  [E5, 0.15],
-  [D5, 0.15],
-  [A4 , 0.15],
-  [nil, 0.15],
-  [C5, 0.15],
-  [nil, 0.15],
-  [B4, 0.15],
-  [nil, 0.15],
-  [E4, 0.15],
-  [nil, 0.15],
+tp = 3 * 4
 
-  [A4, 0.15],
-  [C5, 0.15],
-  [D5, 0.15],
-  [nil, 0.15],
-  [B4, 0.15],
+TRIPPLET_TEST = [
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  [nil, 0.3],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  [E5, 0.15],
-  [D5, 0.15],
-  [A4, 0.15],
-  [C5, 0.15],
-  [B4, 0.15],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  [E4, 0.15],
-  [A4, 0.15],
-  [C5, 0.15],
-  [D5, 0.15],
-  [B4, 0.15],
-]
-make_melody(DU_HAST, 2, 0.8)
-=end
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-OLD_MCD = [
-  [F4, 4],
-  [F4, 4],
-  [F4, 4],
-  [C4, 4],
-  [D4, 4],
-  [D4, 4],
-  [C4, 4],
-  [nil, 4],
-  [A4, 4],
-  [A4, 4],
-  [G4, 4],
-  [G4, 4],
-  [F4, 1],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
+
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
+
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 ]
 
-AWHHOH_MEL = [
-  [C5, 2],
-  [D5, 8],
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [AS4, 2],
+TRIPPLET_TEST_BASS = [
+  [G2, 4],
+  [C3, 4],
+  [A3, 4],
+  [G2, 4],
 
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [A4, 2],
-
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [F4, 8],
-
-  # simulate dotted quarter
-  [G4, 4],
-  [G4, 8],
-  [C4, 8],
-  [C4, 2],
-
-  [F4, 4],
-  [G4, 4],
-  [A4, 4],
-  [AS4, 4],
-  [A4, 2],
-  [G4, 2],
-  [F4, 1],
+  [G2, 4],
+  [C3, 4],
+  [A3, 4],
+  [G2, 4],
 ]
 
-AWHHOH_HAR = [
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-
-  [F4, 8],
-  [G4, 8],
-  [A4, 8],
-  [F4, 8],
-#############
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [F4, 8],
-
-  [E4, 8],
-  [F4, 8],
-  [G4, 8],
-  [E4, 8],
-#############
-  [A4, 8],
-  [G4, 8],
-  [F4, 8],
-  [E4, 8],
-
-  [D4, 8],
-  [E4, 8],
-  [F4, 8],
-  [D4, 8],
-
-#############
-  [G4, 4],
-  [G4, 8],
-  [C4, 8],
-  [C4, 4],
-#############
-  [C5, 4],
-  [C5, 8],
-  [AS4, 8],
-  [A4, 8],
-  [G4, 8],
-  [F4, 4],
-  [AS4, 4],
-
-  [A4, 8],
-  [AS4, 8],
-  [C5, 8],
-  [A4, 8],
-  [G4, 4],
-  [G4, 8],
-  [F4, 8],
-  [F4, 1],
-]
-
-line1 = make_melody_daw(120, AWHHOH_MEL)
-line2 = make_melody_daw(120, AWHHOH_HAR)
-
+line1 = make_melody_daw(100, TRIPPLET_TEST)
+line2 = make_melody_daw(100, TRIPPLET_TEST_BASS)
 render_stereo_16(make_stereo(sum([line1, line2])))
