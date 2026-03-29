@@ -2,7 +2,16 @@
 # https://ccrma.stanford.edu/courses/422-winter-2014/projects/WaveFormat
 
 # TODO
+# connect sample arrays smoothly by tracking phase angle
+  # reset the phase for samples that will be summed together
+  # continue the phase for samples that will be placed in sequence
+
+# introduce sliding notation e.g. [FS1-B1, 2], and implement with sweeps
 # debug: sweeps bounce when range is large
+
+# ratatat tacobel canon
+
+# FFT a note from a violin, figure out a wave comp, make a violin synth voice
 
 MIN_V = -32768
 MAX_V = 32767
@@ -41,6 +50,12 @@ define_ns(5, 2.0)
 define_ns(6, 4.0)
 define_ns(7, 8.0)
 define_ns(8, 16.0)
+
+########### OUTPUT
+
+def render_stereo_16(samples)
+  render(2, 44100, 16, samples)
+end
 
 def render(channels, sample_rate, bits_per_sample, samples=[])
   chunk_id = hexbytes([0x52, 0x49, 0x46, 0x46]) # "RIFF"
@@ -120,6 +135,46 @@ def make_noise(time, rate)
   return num_samples.times.map { |s| rand(MIN_V..MAX_V) }
 end
 
+# A __really solid__ ol' college try at implementing phase locking.
+=begin
+$global_phase_angle = 0
+
+def make_sine(frequency, time, rate)
+  num_samples = (time.to_f * rate.to_f).round
+  amplitude = MAX_V.to_f
+  period = frequency.to_f / rate.to_f * 2.0 * Math::PI
+
+  # frequency = cycles / second
+  # rate = samples per cycle
+  samples_per_cycle = rate.to_f / frequency.to_f
+  phase_tick = 2.0 * Math::PI / samples_per_cycle
+  offset = $global_phase_angle
+
+  puts "starting phase angle is #{offset}"
+
+  return num_samples.times.map { |s|
+
+    #offset = Math::PI
+    #offset = $global_phase_angle * samples_per_cycle
+    #offset = Math::PI * samples_per_cycle
+    #offset = 0
+
+    height = (amplitude * Math.sin(period * (s.to_f - (offset * frequency)))).round
+
+
+    #puts "#{s % samples_per_cycle.to_i} #{$global_phase_angle}"
+
+    $global_phase_angle += phase_tick
+    if $global_phase_angle > 2.0 * Math::PI
+      $global_phase_angle -= 2.0 * Math::PI
+    end
+
+    puts "last known phase angle is #{offset}"
+    height
+  }
+end
+=end
+
 def make_sine(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
@@ -192,7 +247,7 @@ def sum(sample_arrays)
   return output_samples
 end
 
-########### OUTPUT
+########### COMPOSITION
 
 # notes are [note, ..., note_value, (opt_voice)]
 # [E5, 4]                   an e5 quarter note
@@ -218,7 +273,7 @@ def make_melody_daw(tempo, note_array, voice=:sine, pitch_shift=1, tempo_shift=1
 end
 
 def make_melody(note_time_array, voice, pitch_shift=1, tempo_shift=1)
-  samples = note_time_array.map do |note_params|
+  note_time_array.map do |note_params|
 
     # figure out if there is a voice specified, remove all params except notes
     value_or_voice = note_params.pop
@@ -244,251 +299,60 @@ def make_melody(note_time_array, voice, pitch_shift=1, tempo_shift=1)
       send("make_#{voice}", notes.first * pitch_shift, time * tempo_shift, 44100)
     end
   end.reduce([]) { |all, samples| all + samples }
-  render_stereo_16(make_stereo(samples))
-  return samples
-end
-
-def render_stereo_16(samples)
-  render(2, 44100, 16, samples)
 end
 
 
 
 ##### TEST STUFF!
 
-ALL_STAR_GTR = [
-  # hey now, you a A
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
+tp = 3 * 4
 
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
+TRIPPLET_TEST = [
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  [C3, FS3, C4, 8],
-  [C3, FS3, C4, 8],
-  [C3, FS3, C4, 8],
-  [C3, FS3, C4, 8],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  # hey now, you a B
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  [C3, FS3, C4, 8],
-  [C3, FS3, C4, 8],
-  [C3, FS3, C4, 8],
-  [C3, FS3, C4, 8],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 
-  # cause all that glitters
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-
-  [C3, FS3, C4, 8],
-  [C3, FS3, C4, 8],
-  [C3, FS3, C4, 8],
-  [C3, FS3, C4, 8],
-
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-  [B2, FS3, B3, 8],
-
-  # ...stars break the mold
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-  [FS2, CS3, FS3, 8],
-
-  [E2, B2, E3, 8],
-  [E2, B2, E3, 8],
-  [E2, B2, E3, 8],
-  [E2, B2, E3, 8],
-
-  [B2, FS3, B3, 1],
+  [G3, tp],
+  [C4, tp],
+  [A4, tp],
 ]
 
-ALL_STAR_BAS = [
-  # hey now, you a A
-  [FS1, 8],
-  [FS1, 8],
-  [FS1, 8],
-  [FS1, 8],
+TRIPPLET_TEST_BASS = [
+  [G2, 4],
+  [C3, 4],
+  [A3, 4],
+  [G2, 4],
 
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-
-  [C2, 8],
-  [C2, 8],
-  [C2, 8],
-  [C2, 8],
-
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-
-  # hey now, you a B
-  [FS1, 8],
-  [FS1, 8],
-  [FS1, 8],
-  [FS1, 8],
-
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-
-  [C2, 8],
-  [C2, 8],
-  [C2, 8],
-  [C2, 8],
-
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-
-  # cause all that glitters
-  [FS1, 8],
-  [FS1, 8],
-  [FS1, 8],
-  [FS1, 8],
-
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-
-  [C2, 8],
-  [C2, 8],
-  [C2, 8],
-  [C2, 8],
-
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-  [B1, 8],
-
-  # ...stars break the mold
-  [FS2, 8],
-  [FS2, 8],
-  [FS2, 8],
-  [FS2, 8],
-
-  [E2, 8],
-  [E2, 8],
-  [E2, 8],
-  [E2, 8],
-
-  [B2, 1],
+  [G2, 4],
+  [C3, 4],
+  [A3, 4],
+  [G2, 4],
 ]
 
-ALL_STAR_VOC = [
-  # hey now, you a A
-  [AS4, 8],
-  [FS4, 8],
-  [nil, 8],
-  [FS4, 16],
-  [CS4, 16],
-  [FS4, 8],
-  [FS4, 8],
-  [nil, 8],
-  [FS4, 16],
-  [CS4, 16],
-  [FS4, 8],
-  [FS4, 8],
-  [nil, 8],
-  [FS4, 8],
-  [nil, 8],
-  [AS4, 4],
-  [nil, 8],
-
-  # hey now, you a B
-  [AS4, 8],
-  [FS4, 8],
-  [nil, 8],
-  [FS4, 16],
-  [CS4, 16],
-  [FS4, 8],
-  [FS4, 8],
-  [nil, 8],
-  [FS4, 16],
-  [CS4, 16],
-  [FS4, 8],
-  [FS4, 8],
-  [nil, 8],
-  [FS4, 8],
-  [nil, 8],
-  [AS4, 4],
-
-  # cause all that glitters
-  [FS4, 8], # pick up
-  [AS4, 4],
-  [CS5, 4],
-
-  [B4, 8],
-  [AS4, 8],
-  [GS4, 8],
-  [GS4, 8],
-  [FS4, 4],
-  [nil, 4],
-  [FS4, 8],
-  [FS4, 8],
-  [GS4, 8],
-  [FS4, 8],
-
-  # ...stars break the mold
-  [AS4, 8],
-  [GS4, 4],
-  [GS4, 4],
-  [FS4, 4],
-  [GS4, 8],
-  [AS4, 8],
-  [DS4, 2],
-]
-
-#line1 = make_melody_daw(104, ALL_STAR_GTR, :saw)
-#line2 = make_melody_daw(104, ALL_STAR_BAS)
-#line3 = make_melody_daw(104, ALL_STAR_VOC)
-#render_stereo_16(make_stereo(sum([line1, line2, line3])))
-
-#sweep = make_sine_sweep(G4, F4, 8, 44100)
-#render_stereo_16(make_stereo(sweep))
-
-VOICE_SELECT_TEST = [
-  [AS4, D5, G3, 1, :square],
-  [C4, 1, :saw],
-  [AS4, D5, G3, 1, :sine],
-  [D4, A4, 1],
-]
-
-render_stereo_16(make_stereo(make_melody_daw(104, VOICE_SELECT_TEST)))
+line1 = make_melody_daw(100, TRIPPLET_TEST)
+line2 = make_melody_daw(100, TRIPPLET_TEST_BASS)
+render_stereo_16(make_stereo(sum([line1, line2])))
