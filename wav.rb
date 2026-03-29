@@ -178,7 +178,7 @@ end
 def make_sine(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
-    (MAX_V.to_f * Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))).round
+    (amp_saw_env(num_samples, s, 0.1) * Math.sin(frequency.to_f * (1.0 / rate.to_f) * (2.0 * Math::PI * s.to_f))).round
   }
 end
 
@@ -210,6 +210,34 @@ def make_saw(frequency, time, rate)
     sample_counter = (sample_counter + 1) % samples_per_cycle
     ((MAX_V.to_f * 2.0 * pct_thru_cycle) - MAX_V.to_f).round
   }
+end
+
+########### AMPS AND ENVS
+
+# Amplitude is ... v height * percent?
+# But not really because there are below the poles V
+def amp(v, percent)
+  v * percent
+end
+
+# Let's make a simple fixed AR envelope as a saw whose peak is some percentage through the note
+def amp_saw_env(num_samples, sample, attack = 0.5)
+  return 0 if sample == 0
+
+  # Percent through note total .eg. 0.38
+  percent_of_time_through_note = sample.to_f / num_samples.to_f
+
+  # On the way up the ramp, we linearly go from 0 to MAX_V
+  # On the way down, we linearly go from MAX_V to 0
+  if percent_of_time_through_note < attack
+    #Attack
+    amount = shape_lerp(0, MAX_V.to_f, 2.0 * percent_of_time_through_note)
+  else
+    # Release
+    amount = shape_lerp(MAX_V.to_f, 0, 2.0 * (1 - percent_of_time_through_note))
+  end
+
+  amount.to_i
 end
 
 ########### PROCESSING
