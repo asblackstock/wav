@@ -178,7 +178,7 @@ end
 def make_sine(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
-    (amp_saw_env(num_samples, s, 0.25) * Math.sin(frequency.to_f * (1.0 / rate.to_f) * (2.0 * Math::PI * s.to_f))).round
+    (amp_env_lin(num_samples, s, 0.25) * Math.sin(frequency.to_f * (1.0 / rate.to_f) * (2.0 * Math::PI * s.to_f))).round
   }
 end
 
@@ -196,7 +196,8 @@ def make_square(frequency, time, rate)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
     height = Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))
-    height >= 0 ? MAX_V : MIN_V
+    amp_env_v = amp_env_lin(num_samples, s, 0.25)
+    height >= 0 ? amp_env_v : -1.0 * amp_env_v
   }
 end
 
@@ -208,7 +209,7 @@ def make_saw(frequency, time, rate)
   return num_samples.times.map { |s|
     pct_thru_cycle = sample_counter.to_f / samples_per_cycle.to_f
     sample_counter = (sample_counter + 1) % samples_per_cycle
-    ((MAX_V.to_f * 2.0 * pct_thru_cycle) - MAX_V.to_f).round
+    ((amp_env_lin(num_samples, s, 0.25) * 2.0 * pct_thru_cycle) - MAX_V.to_f).round
   }
 end
 
@@ -225,7 +226,7 @@ end
 # The S stage is percentage of MAX_V
 #
 # TODO: the release stage should be calculated as something like total_length - attack_stage and walk the percentage back from the end of that?
-def amp_saw_env(num_samples, sample, attack = 0.5, sustain = 0.2, release = 0.75)
+def amp_env_lin(num_samples, sample, attack = 0.5, sustain = 0.2, release = 0.75)
   return 0 if sample == 0
 
   # Percent through note total .eg. 0.38
