@@ -16,6 +16,15 @@
 MIN_V = -32768
 MAX_V = 32767
 
+# Sane (for testing?) default for the amplitude envelope
+
+AMP_EG_DEFAULT = {
+  attack: 0.25,
+  sustain: 0.75,
+  release: 0.8,
+}
+
+
 ########### SOUNDS
 
 C4 = 261.63
@@ -175,10 +184,11 @@ def make_sine(frequency, time, rate)
 end
 =end
 
-def make_sine(frequency, time, rate)
+def make_sine(frequency, time, rate, amp_eg)
   num_samples = (time.to_f * rate.to_f).round
+
   return num_samples.times.map { |s|
-    (amp_env_lin(num_samples, s, 0.25) * Math.sin(frequency.to_f * (1.0 / rate.to_f) * (2.0 * Math::PI * s.to_f))).round
+    (amp_env_lin(num_samples, s, amp_eg) * Math.sin(frequency.to_f * (1.0 / rate.to_f) * (2.0 * Math::PI * s.to_f))).round
   }
 end
 
@@ -192,16 +202,16 @@ def make_sine_sweep(from_frequency, to_frequency, time, rate)
   }
 end
 
-def make_square(frequency, time, rate)
+def make_square(frequency, time, rate, amp_eg)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
     height = Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))
-    amp_env_v = amp_env_lin(num_samples, s, 0.25)
+    amp_env_v = amp_env_lin(num_samples, s, amp_eg)
     height >= 0 ? amp_env_v : -1.0 * amp_env_v
   }
 end
 
-def make_saw(frequency, time, rate)
+def make_saw(frequency, time, rate, amp_eg)
   num_samples = (time.to_f * rate.to_f).round
   samples_per_cycle = (rate.to_f / frequency.to_f).round
   sample_counter = 0
@@ -209,7 +219,7 @@ def make_saw(frequency, time, rate)
   return num_samples.times.map { |s|
     pct_thru_cycle = sample_counter.to_f / samples_per_cycle.to_f
     sample_counter = (sample_counter + 1) % samples_per_cycle
-    ((amp_env_lin(num_samples, s, 0.25) * 2.0 * pct_thru_cycle) - MAX_V.to_f).round
+    ((amp_env_lin(num_samples, s, amp_eg) * 2.0 * pct_thru_cycle) - MAX_V.to_f).round
   }
 end
 
@@ -226,8 +236,12 @@ end
 # The S stage is percentage of MAX_V
 #
 # TODO: the release stage should be calculated as something like total_length - attack_stage and walk the percentage back from the end of that?
-def amp_env_lin(num_samples, sample, attack = 0.5, sustain = 0.2, release = 0.75)
+def amp_env_lin(num_samples, sample, amp_eg = AMP_EG_DEFAULT)
   return 0 if sample == 0
+
+  attack = amp_eg[:attack]
+  sustain = amp_eg[:sustain]
+  release = amp_eg[:release]
 
   # Percent through note total .eg. 0.38
   percent_of_time_through_note = sample.to_f / num_samples.to_f
@@ -294,17 +308,13 @@ end
 def make_melody_daw(tempo, note_array, voice=:sine, pitch_shift=1, tempo_shift=1)
   quarter_note_time = 60.0 / tempo.to_f
   note_time_array = note_array.map do |note_params|
-
-    # figure out if there is a voice specified, remove all params except notes
-    value_or_voice = note_params.pop
-    value_voice = value_or_voice.is_a?(Numeric) ? [value_or_voice] : [note_params.pop, value_or_voice]
-
     # determine the raw time of the note value
-    value = value_voice.first.to_f
+    value = note_params[:duration]
     quarter_note_ratio = 4.0 / value
     raw_time = quarter_note_time * quarter_note_ratio
 
-    value_voice.count > 1 ? [*note_params, raw_time, value_voice.last] : [*note_params, raw_time]
+    note_params[:raw_time] = raw_time
+    note_params
   end
 
   return make_melody(note_time_array, voice, pitch_shift, tempo_shift)
@@ -312,17 +322,10 @@ end
 
 def make_melody(note_time_array, voice, pitch_shift=1, tempo_shift=1)
   note_time_array.map do |note_params|
-
-    # figure out if there is a voice specified, remove all params except notes
-    value_or_voice = note_params.pop
-    value_voice = value_or_voice.is_a?(Numeric) ? [value_or_voice] : [note_params.pop, value_or_voice]
-
-    time = value_voice.first
-    notes = note_params
-
-    if value_voice.count > 1
-      voice = value_voice.last
-    end
+    notes = note_params[:notes]
+    time = note_params[:raw_time].nil? ? note_params[:duration] : note_params[:raw_time]
+    voice = note_params[:voice].nil? ? voice : note_params[:voice]
+    amp_eg = note_params[:amp_eg].nil? ? AMP_EG_DEFAULT : note_params[:amp_eg]
 
     # Rest
     if notes.first == nil
@@ -330,11 +333,11 @@ def make_melody(note_time_array, voice, pitch_shift=1, tempo_shift=1)
 
     # Chord
     elsif notes.count > 1
-      sum(notes.map{ |note| send("make_#{voice}", note * pitch_shift, time * tempo_shift, 44100) })
+      sum(notes.map{ |note| send("make_#{voice}", note * pitch_shift, time * tempo_shift, 44100, amp_eg) })
 
     # Note
     else
-      send("make_#{voice}", notes.first * pitch_shift, time * tempo_shift, 44100)
+      send("make_#{voice}", notes.first * pitch_shift, time * tempo_shift, 44100, amp_eg)
     end
   end.reduce([]) { |all, samples| all + samples }
 end
@@ -392,11 +395,77 @@ TRIPPLET_TEST_BASS = [
 ]
 
 TEST = [
-  [C4, 1],
-  [C4, 2],
-  [C4, 4],
+  {
+    notes: [C4],
+    duration: 2,
+    voice: :square,
+    amp_eg: {
+      attack: 0.25,
+      sustain: 0.75,
+      release: 0.8
+    }
+  },
+  {
+    notes: [FS2, CS3, FS3],
+    duration: 8,
+    voice: :saw,
+    amp_eg: {
+      attack: 0.15,
+      sustain: 0.35,
+      release: 0.7
+    }
+  },
+  {
+    notes: [FS2, CS3, FS3],
+    duration: 4,
+    voice: :saw,
+    amp_eg: {
+      attack: 0.15,
+      sustain: 0.5,
+      release: 0.7
+    }
+  },
+  {
+    notes: [FS2, CS3, FS3],
+    duration: 2,
+    voice: :saw,
+    amp_eg: {
+      attack: 0.15,
+      sustain: 0.75,
+      release: 0.7
+    }
+  },
+  {
+    notes: [C3],
+    duration: 8,
+    voice: :sine,
+    amp_eg: {
+      attack: 0.1,
+      sustain: 1.0,
+      release: 0.6
+    }
+  },
+  {
+    notes: [C3],
+    duration: 8,
+    voice: :sine,
+    amp_eg: {
+      attack: 0.1,
+      sustain: 1.0,
+      release: 0.6
+    }
+  },
+  {
+    notes: [C3],
+    duration: 8,
+    voice: :sine,
+    amp_eg: {
+      attack: 0.5,
+      sustain: 1.0,
+      release: 0.6
+    }
+  }
 ]
 
-line1 = make_melody_daw(120, TEST)
-# line2 = make_melody_daw(100, TRIPPLET_TEST_BASS)
+line1 = make_melody_daw(120, TEST, :saw)
 render_stereo_16(make_stereo(line1))
