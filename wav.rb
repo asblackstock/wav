@@ -446,10 +446,10 @@ TACO_BAS = [
 
 #render_stereo_16(make_stereo(make_melody_daw(90, TACO_MEL, :saw)))
 
-line1 = make_melody_daw(90, TACO_MEL, :saw)
-line2 = make_melody_daw(90, TACO_HAR, :saw)
-line3 = make_melody_daw(90, TACO_BAS)
-render_stereo_16(make_stereo(sum([line1, line2, line3])))
+#line1 = make_melody_daw(90, TACO_MEL, :saw)
+#line2 = make_melody_daw(90, TACO_HAR, :saw)
+#line3 = make_melody_daw(90, TACO_BAS)
+#render_stereo_16(make_stereo(sum([line1, line2, line3])))
 
 
 SLIDE_TEST = [
