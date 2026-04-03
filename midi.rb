@@ -46,27 +46,26 @@ def make_sine_cycle(frequency, rate)
   }
 end
 
-def make_tone_thread(key)
+def make_tone_thread
   return Thread.new {
     PortAudio.with_portaudio {
-      while $tone_thread_is_running
-        samples = make_sine_cycle(KEY_MAP[key], 44100)
+      while !KEYS_DOWN.empty?
+        samples = make_sine_cycle(KEY_MAP[KEYS_DOWN.first], 44100)
         $stream.write(samples)
       end
     }
   }
 end
 
+KEYS_DOWN = []
+
 $stream = nil
 $tone_thread = nil
-$tone_thread_is_running = false
 
 input_thread = Thread.new {
   PortAudio.with_portaudio {
-    # 1. Select the first available MIDI input device
+    # Select the first available MIDI input device
     input = UniMIDI::Input.first
-
-    # 2. Open the device and listen for messages
     input.open do |input|
       puts "Listening for MIDI input on #{input.name}..."
       loop do
@@ -77,11 +76,15 @@ input_thread = Thread.new {
         puts "Received: #{cmd} #{key} #{velocity} #{timestamp}" if message
 
         if cmd == CMD_DOWN
-          $tone_thread_is_running = true
-          $tone_thread = make_tone_thread(key)
+          KEYS_DOWN << key
+          if !$tone_thread || !$tone_thread.alive?
+            $tone_thread = make_tone_thread
+          end
         elsif cmd == CMD_UP
-          $tone_thread_is_running = false
+          KEYS_DOWN.delete(key)
         end
+
+        puts KEYS_DOWN.inspect
       end
     end
   }
