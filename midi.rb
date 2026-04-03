@@ -66,6 +66,8 @@ input_thread = Thread.new {
   PortAudio.with_portaudio {
     # Select the first available MIDI input device
     input = UniMIDI::Input.first
+    raise "No MIDI devices available" unless input
+
     input.open do |input|
       puts "Listening for MIDI input on #{input.name}..."
       loop do
@@ -83,7 +85,6 @@ input_thread = Thread.new {
         elsif cmd == CMD_UP
           KEYS_DOWN.delete(key)
         end
-
         puts KEYS_DOWN.inspect
       end
     end
@@ -91,25 +92,35 @@ input_thread = Thread.new {
 }
 
 output_thread = Thread.new {
-  PortAudio.with_portaudio do
+  PortAudio.with_portaudio {
     output = PortAudio::Device.default_output
     raise "No default output device" unless output
 
     stream = PortAudio::BlockingStream.new(
-      output: { device: output, channels: 1, format: :int16 },
+      output: {
+        device: output,
+        channels: 1,
+        format: :int16
+      },
       sample_rate: 44100,
       frames_per_buffer: 256
     )
 
     stream.start
     $stream = stream
-    #stream.stop
-    #stream.close
     puts "Stream initialized"
-  end
+  }
 }
 
+Signal.trap("INT") do
+  puts "Exiting..."
+  $stream.stop
+  $stream.close
+  [input_thread, output_thread].each do |t|
+    t.exit if t.alive?
+  end
+  puts "Done."
+  exit
+end
+
 [input_thread, output_thread].each(&:join)
-
-
-exit(0)
