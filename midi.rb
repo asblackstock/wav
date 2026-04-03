@@ -50,7 +50,30 @@ def make_tone_thread
   return Thread.new {
     PortAudio.with_portaudio {
       while !KEYS_DOWN.empty?
-        samples = make_sine_cycle(KEY_MAP[KEYS_DOWN.first], 44100)
+        samples = []
+
+        if KEYS_DOWN.count == 1
+          samples = make_sine_cycle(KEY_MAP[KEYS_DOWN.first], 44100)
+        elsif KEYS_DOWN.count == 2
+
+          f1 = KEY_MAP[KEYS_DOWN[0]]
+          f2 = KEY_MAP[KEYS_DOWN[1]]
+
+          beat_frequency = (f1 - f2).abs
+          ttm = 1.0/beat_frequency
+          cycles1 = (f1 * ttm).round
+          cycles2 = (f2 * ttm).round
+
+          line1 = cycles1.times.map{|i| make_sine_cycle(f1, 44100) }.flatten
+          line2 = cycles2.times.map{|i| make_sine_cycle(f2, 44100) }.flatten
+
+          samples = sum([line1, line2])
+
+          #puts line1.inspect
+          #puts line2.inspect
+          #puts samples.inspect
+        end
+
         $stream.write(samples)
       end
     }
@@ -124,3 +147,4 @@ Signal.trap("INT") do
 end
 
 [input_thread, output_thread].each(&:join)
+
