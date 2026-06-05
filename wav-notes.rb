@@ -1,5 +1,122 @@
 WAV SONGS
 
+# Tacobel Canon
+
+tp = 3 * 4 # eighth note triplets
+
+TACO_MEL = [
+  [G4, tp],
+  [D4, tp],
+  [G4, tp],
+
+  [A4, tp],
+  [D4, tp],
+  [B4, tp],
+
+
+  [D4, tp],
+  [D5, tp],
+  [E5, tp],
+
+
+  [D5, tp],
+  [C5, tp],
+  [B4, tp],
+
+
+  [D4, tp],
+  [A4, tp],
+  [D4, tp],
+
+
+  [B4, tp],
+  [A4, tp],
+  [D5, tp],
+
+
+  [B4, tp],
+  [C5, tp],
+  [B4, tp],
+
+  [G4, tp],
+  [D4, tp],
+  [C4, tp],
+
+  ###################
+
+  [C3, tp],
+  [G3, tp],
+  [C4, tp],
+
+  [FS4, tp],
+  [C4, tp],
+  [G4, tp],
+
+  [C3, tp],
+  [C4, tp],
+  [FS4, tp],
+
+  [G4, tp],
+  [C4, tp],
+  [C5, tp],
+
+  [A3, tp],
+  [A4, tp],
+  [C4, tp],
+
+  [B4, tp],
+  [E4, tp],
+  [C5, tp],
+
+  [A3, tp],
+  [A4, tp],
+  [E4, tp],
+
+  [C5, tp],
+  [E4, tp],
+  [C5, tp],
+]
+
+TACO_HAR = [
+  [D3, G3, 2],
+  [FS3, D4, 2],
+  [D3, FS3, 2],
+  [G2, [B3, D4], [G3, B3], 2],
+  ###################
+  [E3, C4, E4, 2],
+  [C4, 2],
+  [A3, 2],
+  [E3, E4, 2],
+]
+
+TACO_BAS = [
+  [G2, 2],
+  [FS2, 2],
+  [D3, 2],
+  [G2, 2],
+  ###################
+  [C3, 2],
+  [G2, G3, 2],
+  [A2, 2], # add A1
+  [A2, 2], # add A1
+]
+
+line1 = make_melody_daw(90, TACO_MEL, :saw)
+line2 = make_melody_daw(90, TACO_HAR, :saw)
+line3 = make_melody_daw(90, TACO_BAS)
+render_stereo_16(make_stereo(sum([line1, line2, line3])))
+
+# Slide test
+
+SLIDE_TEST = [
+  #[AS4, D5, G3, 4],
+  #[C4, 4],
+  [[C4, C5], [D4, D5], 2],
+  #[C5, 4],
+  [[C5, C4], [D5, D4], 2],
+]
+
+# Voice select test
 
 VOICE_SELECT_TEST = [
   [AS4, D5, G3, 1, :square],
