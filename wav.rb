@@ -8,8 +8,6 @@
 
 # debug: sweeps
 
-# FFT a note from a violin, figure out a wave comp, make a violin synth voice
-
 MIN_V = -32768
 MAX_V = 32767
 
@@ -47,6 +45,10 @@ define_ns(5, 2.0)
 define_ns(6, 4.0)
 define_ns(7, 8.0)
 define_ns(8, 16.0)
+
+########### EXTRA SOUNDS
+
+require './voices'
 
 ########### OUTPUT
 
@@ -172,10 +174,10 @@ def make_sine(frequency, time, rate)
 end
 =end
 
-def make_sine(frequency, time, rate)
+def make_sine(frequency, time, rate, amplitude = 1.0)
   num_samples = (time.to_f * rate.to_f).round
   return num_samples.times.map { |s|
-    (MAX_V.to_f * Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))).round
+    (MAX_V.to_f * amplitude * Math.sin(frequency.to_f * (1.0/rate.to_f) * (2.0 * Math::PI * s.to_f))).round
   }
 end
 
@@ -340,4 +342,3 @@ def make_melody(note_time_array, voice, pitch_shift=1, tempo_shift=1)
     end
   end.reduce([]) { |all, samples| all + samples }
 end
-
